@@ -82,9 +82,7 @@ module Strava
         activity = Activity.new(raw_activity)
         current_date = activity.date
 
-        if date != -1 && current_date.month != date.month
-          rows << :separator
-        end
+        rows << :separator if date != -1 && current_date.month != date.month
 
         date = current_date
         rows << [
@@ -95,15 +93,15 @@ module Strava
         ]
       end
 
-      Terminal::Table.new(
+      !rows.empty? && Terminal::Table.new(
         title: activity_type,
         headings: fields,
         rows: rows
-      ) if !rows.empty?
+      )
     end
 
     def build_graph_speed(activity_type)
-      graph = ""
+      graph = ''
 
       all = select_activities(activity_type).map do |raw_activity|
         Activity.new(raw_activity)
@@ -129,10 +127,14 @@ module Strava
           ]
         end
 
-        graph += AsciiCharts::Cartesian.new(data.reverse, title: "#{year} - #{activity_type} avg speed").draw + "\n"
+        data.size > 1 && graph += AsciiCharts::Cartesian.new(
+          data.reverse,
+          title: "#{year} - #{activity_type} avg speed",
+          step_size: 0.3
+        ).draw + "\n"
       end
 
-      graph if !graph.empty?
+      !graph.empty? && graph
     end
 
     def fetch_activities_data
