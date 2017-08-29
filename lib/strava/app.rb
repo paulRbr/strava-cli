@@ -93,11 +93,11 @@ module Strava
         ]
       end
 
-      !rows.empty? && Terminal::Table.new(
+      Terminal::Table.new(
         title: activity_type,
         headings: fields,
         rows: rows
-      )
+      ) unless rows.empty?
     end
 
     def build_graph_speed(activity_type)
@@ -127,14 +127,16 @@ module Strava
           ]
         end
 
-        data.size > 1 && graph += AsciiCharts::Cartesian.new(
-          data.reverse,
-          title: "#{year} - #{activity_type} avg speed",
-          step_size: 0.3
-        ).draw + "\n"
+        if data.size > 1
+          graph += AsciiCharts::Cartesian.new(
+            data.reverse,
+            title: "#{year} - #{activity_type} avg speed",
+            step_size: 0.3
+          ).draw + "\n"
+        end
       end
 
-      !graph.empty? && graph
+      graph unless graph.empty?
     end
 
     def fetch_activities_data
