@@ -24,6 +24,7 @@ Gem::Specification.new do |s|
   s.add_dependency 'hashie'
   s.add_dependency 'strava-api-v3'
   s.add_dependency 'terminal-table'
+  s.add_dependency 'ascii-charts'
 
   s.add_development_dependency 'pry'
   s.add_development_dependency 'guard'

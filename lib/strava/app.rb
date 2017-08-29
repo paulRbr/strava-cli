@@ -1,12 +1,8 @@
 require 'easy_app_helper'
 require 'terminal-table'
+require 'ascii_charts'
 require 'strava/api/v3'
 require 'vcr'
-require 'time'
-
-# Method access to Hash content
-require 'hashie'
-class Hash; include Hashie::Extensions::MethodAccess; end
 
 # Configure HTTP records
 VCR.configure do |config|
@@ -21,7 +17,8 @@ module Strava
     NAME = 'Strava Dashboard'
     DESCRIPTION = 'Fetchs data from strava to report what you have done'
 
-    attr_accessor :client, :types, :fields
+    attr_accessor :client, :types, :graph, :activities
+
     def initialize
       config.config_file_base_name = 'strava'
       config.describes_application app_name: NAME,
@@ -31,6 +28,7 @@ module Strava
       config.add_command_line_section('Strava options') do |slop|
         slop.on :strava_access_token, 'Strava access token', argument: true, as: String
         slop.on :activity, 'Display this activity type only (Run, Ride, Swim)', argument: true
+        slop.on :graph, 'Display a graph instead of a table', argument: false
       end
 
       if config[:help]
@@ -43,7 +41,8 @@ module Strava
       else
         @types = %w(Run Ride Swim)
       end
-      @fields = ["Start date", "Distance", "Elapsed time", "Avg speed"]
+      @graph = config[:graph]
+      @activities = []
     end
 
     def configure_api_client
@@ -53,43 +52,102 @@ module Strava
     def run
       configure_api_client
 
-      activities = []
+      fetch_activities_data
 
+      for type in types
+
+        if graph
+          output_screen = build_graph_speed(type)
+        else
+          output_screen = build_table(type)
+        end
+
+        if output_screen.nil?
+          puts "No activity found. Go out and start #{type}ing!"
+        else
+          puts output_screen
+        end
+        puts "\n"
+      end
+    end
+
+    private
+
+    def build_table(activity_type)
+      fields = ["Date", "Distance", "Elapsed time", "Avg speed"]
+      rows = []
+      date = -1
+
+      select_activities(activity_type).each do |raw_activity|
+        activity = Activity.new(raw_activity)
+        current_date = activity.date
+
+        if date != -1 && current_date.month != date.month
+          rows << :separator
+        end
+
+        date = current_date
+        rows << [
+          activity.human_date,
+          activity.human_distance_km,
+          activity.human_elapsed_time,
+          activity.human_avg_speed
+        ]
+      end
+
+      Terminal::Table.new(
+        title: activity_type,
+        headings: fields,
+        rows: rows
+      ) if !rows.empty?
+    end
+
+    def build_graph_speed(activity_type)
+      graph = ""
+
+      all = select_activities(activity_type).map do |raw_activity|
+        Activity.new(raw_activity)
+      end
+
+      activities_by_year = all.group_by do |activity|
+        activity.date.year
+      end
+
+      activities_by_year.each do |year, a|
+        data = []
+
+        activities_by_month = a.group_by do |activity|
+          activity.date.month
+        end
+
+        activities_by_month.each do |month, activities|
+          avg_speed = activities.sum(&:avg_speed) / activities.size
+
+          data << [
+            "#{month}/#{year}",
+            avg_speed
+          ]
+        end
+
+        graph += AsciiCharts::Cartesian.new(data.reverse, title: "#{year} - #{activity_type} avg speed").draw + "\n"
+      end
+
+      graph if !graph.empty?
+    end
+
+    def fetch_activities_data
       VCR.use_cassette("activities", record: :new_episodes) do
         page = 0
         per_page = 100
         while activities.count == page*per_page
           page +=1
-          activities += client.list_athlete_activities(per_page: per_page,page: page)
+          @activities += client.list_athlete_activities(per_page: per_page,page: page)
         end
       end
+    end
 
-      for type in types
-        rows = []
-        month = -1
-        activities.select { |activity| activity.type == type }.each do |activity|
-          date = Time.parse(activity.start_date_local)
-          current_month = date.month
-          distance_km = (activity.distance/1000.0).round(3)
-          elapsed_time_min = (activity.elapsed_time/60.0).round(2)
-          elapsed_time_hour = (activity.elapsed_time/3600.0)
-          avg_speed = (distance_km/elapsed_time_hour).round(2)
-          if current_month != month && month != -1
-            rows << :separator
-          end
-          month = current_month
-          rows << [date , "#{distance_km} km", "#{elapsed_time_min} min", "#{avg_speed} km/h"]
-        end
-
-        table = Terminal::Table.new :title => type, :headings => fields, :rows => rows
-
-        if rows.empty?
-          puts "No activity found. Go out and start #{type}ing!"
-        else
-          puts table
-        end
-        puts "\n"
-      end
+    def select_activities(type)
+      activities.select { |activity| activity.type == type }
     end
   end
 end
