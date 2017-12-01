@@ -10,7 +10,7 @@ module Strava
     NAME = 'Strava Dashboard'
     DESCRIPTION = 'Fetchs data from strava to report what you have done'
 
-    attr_accessor :client, :types, :graph, :activities
+    attr_accessor :client, :types, :graph, :activities, :publicize, :simulate
 
     def initialize
       config.config_file_base_name = Strava::BASE_NAME
@@ -23,6 +23,7 @@ module Strava
         slop.on :activity, 'Display this activity type only (Run, Ride, Swim)', argument: true
         slop.on :graph, 'Display a graph instead of a table', argument: false
         slop.on :scope, 'Display limited scoped activities (public or private)', argument: true
+        slop.on :publicize, 'Make private activities public', argument: false
       end
 
       if config[:help]
@@ -38,6 +39,8 @@ module Strava
       @graph = config[:graph]
       @scope = config[:scope]
       @cache_key = config[:cache_key] || "activities"
+      @publicize = config[:publicize]
+      @simulate  = config[:simulate]
       @activities = []
     end
 
@@ -52,7 +55,9 @@ module Strava
 
       for type in types
 
-        if graph
+        if publicize
+          publicize_activities(type)
+        elsif graph
           output_screen = build_graph_speed(type)
         else
           output_screen = build_table(type)
@@ -151,6 +156,17 @@ module Strava
       activities.select do |activity|
         activity.type == type &&
           @scope.nil? || (!activity.private ^ (@scope == 'private'))
+      end
+    end
+
+    def publicize_activities(type)
+      filtered_activities = select_activities(type)
+      $stdout.puts "You are about to make #{filtered_activities.count} public. Are you sure? (y/n)"
+      if $stdin.gets.strip == 'y' && !simulate
+        filtered_activities.each do |activity|
+          client.update_an_activity(activity.id, private: false)
+        end
+        $stdout.puts "#{filtered_activities.count} activities were made public! /o/"
       end
     end
   end
