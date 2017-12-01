@@ -2,13 +2,6 @@ require 'easy_app_helper'
 require 'terminal-table'
 require 'ascii_charts'
 require 'strava/api/v3'
-require 'vcr'
-
-# Configure HTTP records
-VCR.configure do |config|
-  config.cassette_library_dir = "#{File.expand_path('~')}/.strava"
-  config.hook_into :webmock
-end
 
 module Strava
   class App
@@ -20,7 +13,7 @@ module Strava
     attr_accessor :client, :types, :graph, :activities
 
     def initialize
-      config.config_file_base_name = 'strava'
+      config.config_file_base_name = Strava::BASE_NAME
       config.describes_application app_name: NAME,
                                    app_version: Strava::VERSION,
                                    app_description: DESCRIPTION
@@ -29,6 +22,7 @@ module Strava
         slop.on :strava_access_token, 'Strava access token', argument: true, as: String
         slop.on :activity, 'Display this activity type only (Run, Ride, Swim)', argument: true
         slop.on :graph, 'Display a graph instead of a table', argument: false
+        slop.on :scope, 'Display limited scoped activities (public or private)', argument: true
       end
 
       if config[:help]
@@ -42,6 +36,8 @@ module Strava
         @types = %w(Run Ride Swim)
       end
       @graph = config[:graph]
+      @scope = config[:scope]
+      @cache_key = config[:cache_key] || "activities"
       @activities = []
     end
 
@@ -140,18 +136,22 @@ module Strava
     end
 
     def fetch_activities_data
-      VCR.use_cassette("activities", record: :new_episodes) do
+      VCR.use_cassette(@cache_key, record: :new_episodes) do
         page = 0
         per_page = 100
+
         while activities.count == page*per_page
           page +=1
-          @activities += client.list_athlete_activities(per_page: per_page,page: page)
+          @activities += client.list_athlete_activities(per_page: per_page, page: page)
         end
       end
     end
 
     def select_activities(type)
-      activities.select { |activity| activity.type == type }
+      activities.select do |activity|
+        activity.type == type &&
+          @scope.nil? || (!activity.private ^ (@scope == 'private'))
+      end
     end
   end
 end
