@@ -38,9 +38,10 @@ module Strava
       end
       @graph = config[:graph]
       @scope = config[:scope]
-      @cache_key = config[:cache_key] || "activities"
-      @publicize = config[:publicize]
-      @simulate  = config[:simulate]
+      @cache_key  = config[:cache_key]  || 'activities'
+      @cache_time = config[:cache_time] || 24 * 3600
+      @publicize  = config[:publicize]
+      @simulate   = config[:simulate]
       @activities = []
     end
 
@@ -141,13 +142,20 @@ module Strava
     end
 
     def fetch_activities_data
-      VCR.use_cassette(@cache_key, record: :new_episodes) do
+      VCR.use_cassette(
+        @cache_key,
+        record: :new_episodes,
+        re_record_interval: @cache_time
+      ) do
         page = 0
         per_page = 100
 
-        while activities.count == page*per_page
-          page +=1
-          @activities += client.list_athlete_activities(per_page: per_page, page: page)
+        while activities.count == page * per_page
+          page += 1
+          @activities += client.list_athlete_activities(
+            per_page: per_page,
+            page: page
+          )
         end
       end
     end
