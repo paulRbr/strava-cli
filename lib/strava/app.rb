@@ -155,7 +155,9 @@ module Strava
     def select_activities(type)
       activities.select do |activity|
         activity.type == type &&
-          @scope.nil? || (!activity.private ^ (@scope == 'private'))
+          (
+            @scope.nil? || !activity.private ^ (@scope == 'private')
+          )
       end
     end
 
